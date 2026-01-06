@@ -78,7 +78,8 @@ function computeLeaderboard(items) {
     if (!byPlayer.has(it.player)) byPlayer.set(it.player, { games:0, wins:0, fails:0, sum:0, best:Infinity, worst:0, twos:0, threes:0 });
     const p = byPlayer.get(it.player);
     p.games += 1;
-    if (!it.fail) p.totalGuesses = (p.totalGuesses || 0) + it.guesses;
+    // Total guesses counts fails as 7
+    p.totalGuesses = (p.totalGuesses || 0) + (it.fail ? 7 : it.guesses);
     if (it.fail) p.fails += 1; else p.wins += 1;
     if (!it.fail) {
       p.sum += it.guesses;
@@ -98,9 +99,12 @@ function computeLeaderboard(items) {
     twos: s.twos, threes: s.threes
   }));
   rows.sort((a,b) => {
-    if (a.avg !== b.avg) return a.avg - b.avg;
-    if (a.fails !== b.fails) return a.fails - b.fails;
-    return (a.best === "-" ? 999 : a.best) - (b.best === "-" ? 999 : b.best);
+    // Overall ranking uses fail-inclusive avg (fail counts as 7)
+    const av = (a.avgWithFails ?? a.avg ?? 0);
+    const bv = (b.avgWithFails ?? b.avg ?? 0);
+    if (av !== bv) return av - bv;
+    if ((a.fails||0) !== (b.fails||0)) return (a.fails||0) - (b.fails||0);
+    return ((a.best === "-" ? 999 : a.best) - (b.best === "-" ? 999 : b.best));
   });
   return rows;
 }
@@ -174,18 +178,26 @@ function renderMiniSummary(leaderboard, streaks) {
   const el = document.getElementById("miniSummary");
   if (!leaderboard.length) { el.innerHTML = ""; return; }
   const top = leaderboard[0];
-  const groupAvg = leaderboard.reduce((s,r)=>s + (r.avg||0), 0) / leaderboard.length;
+  const groupAvg = leaderboard.reduce((s,r)=>s + (r.avgWithFails||r.avg||0), 0) / leaderboard.length;
   const chips = [
-    `👑 ${escapeHtml(top.player)} ${top.avg.toFixed(2)}`,
+    `👑 ${escapeHtml(top.player)} ${(top.avgWithFails||top.avg||0).toFixed(2)}`,
     `📊 Group avg ${groupAvg.toFixed(2)}`,
   ];
-  // Add top current streak
-  let bestStreak = { player: null, current: 0 };
+  // Add current streak leaders (handles ties)
+  let maxCur = 0;
   for (const r of leaderboard) {
     const st = streaks.get(r.player);
-    if (st && st.current > bestStreak.current) bestStreak = { player: r.player, current: st.current };
+    if (st && st.current > maxCur) maxCur = st.current;
   }
-  if (bestStreak.player) chips.push(`🔥 Current streak: ${escapeHtml(bestStreak.player)} ${bestStreak.current}`);
+  if (maxCur > 0) {
+    const leaders = leaderboard
+      .map(r => ({ p: r.player, st: streaks.get(r.player) }))
+      .filter(x => x.st && x.st.current === maxCur)
+      .map(x => x.p);
+    const shown = leaders.slice(0, 3).map(p => escapeHtml(p)).join(", ");
+    const more = leaders.length > 3 ? ` +${leaders.length - 3}` : "";
+    chips.push(`🔥 Current streak leaders: ${shown}${more} (${maxCur})`);
+  }
 
   el.innerHTML = chips.map(c => `<span class="chip">${c}</span>`).join("");
 }
