@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wordle League</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="header">
+    <h1>🏆 Wordle League 2026</h1>
+    <p class="sub">Auto-updates from your Google Sheet</p>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Leaderboard</h2>
+      <div id="status" class="status">Loading…</div>
+      <div id="leaderboard"></div>
+    </section>
+
+    <section class="card">
+      <h2>Group average by day</h2>
+      <canvas id="groupChart" height="140"></canvas>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
