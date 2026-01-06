@@ -1,6 +1,8 @@
 /* global SHEET_CSV_URL, Chart */
 let groupChart, playerChart;
 
+const APP_VERSION = "v14";
+
 
 const NAME_MAP = {
   "Danny - Denmark": "Danny",
@@ -607,6 +609,8 @@ async function main() {
   const hof = computeHallOfFame(items);
   renderHallOfFame(hof);
 
+  const vEl = document.getElementById("appVersion");
+  if (vEl) vEl.textContent = `App version: ${APP_VERSION}`;
   setStatus("Updated.");
 }
 
