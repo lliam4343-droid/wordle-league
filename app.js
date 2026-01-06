@@ -13,6 +13,17 @@ const NAME_MAP = {
   "Dave White": "Dave"
 };
 
+// Fixed league roster (used for missed-day fails and to avoid duplicate name variants)
+const ROSTER = ["Danny","Luis","Lliam","Jamie","Barry Barry","Dave"];
+
+function normalizeName(name) {
+  return String(name || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+
 
 function parseDateDMY(s) {
   // dd/mm/yy or dd/mm/yyyy
@@ -496,8 +507,18 @@ async function main() {
     const dateKey = (r[0] || "").trim();
     const dt = parseDateDMY(dateKey);
     const puzzle = safeNum((r[1] || "").trim());
-    let player = (r[2] || "").trim();
+    let playerRaw = (r[2] || "").trim();
+    let player = playerRaw;
+    // Direct map
     if (NAME_MAP[player]) player = NAME_MAP[player];
+    // Normalized map (handles stray spaces/case)
+    else {
+      const n = normalizeName(playerRaw);
+      // try matching keys by normalized form
+      for (const k of Object.keys(NAME_MAP)) {
+        if (normalizeName(k) === n) { player = NAME_MAP[k]; break; }
+      }
+    }
     const guesses = safeNum((r[3] || "").trim());
     const result = (r[4] || "").trim().toLowerCase();
     const fail = result === "fail" || guesses === 0;
@@ -506,7 +527,7 @@ async function main() {
 
   items.sort((a,b) => a.dt - b.dt || a.puzzle - b.puzzle || a.player.localeCompare(b.player));
   // Treat blank day as fail: if a player has no entry for a date, count as fail (synthetic X)
-  const allPlayers = Array.from(new Set(items.map(i => i.player)));
+  const allPlayers = ROSTER.slice();
   const byDate = new Map();
   items.forEach(i => {
     if (!byDate.has(i.dateKey)) byDate.set(i.dateKey, new Set());
@@ -535,7 +556,7 @@ async function main() {
   renderGroupAverage(items);
 
   // Form tab
-  const players = leaderboard.map(r => r.player);
+  const players = ROSTER.filter(p => leaderboard.some(r => r.player === p));
   buildPlayerSelect(players);
   const playerSelect = document.getElementById("playerSelect");
   const rollingSelect = document.getElementById("rollingSelect");
