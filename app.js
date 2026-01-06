@@ -1,7 +1,7 @@
 /* global SHEET_CSV_URL, Chart */
 let groupChart, playerChart;
 
-const APP_VERSION = "v14";
+const APP_VERSION = "v15";
 
 
 const NAME_MAP = {
@@ -77,11 +77,22 @@ function csvToRows(csvText) {
 function computeLeaderboard(items) {
   const byPlayer = new Map();
   for (const it of items) {
-    if (!byPlayer.has(it.player)) byPlayer.set(it.player, { games:0, wins:0, fails:0, sum:0, best:Infinity, worst:0, twos:0, threes:0 });
+    if (!byPlayer.has(it.player)) byPlayer.set(it.player, { games:0, wins:0, fails:0, sum:0, best:Infinity, worst:0, twos:0, threes:0, ones:0, fours:0, fives:0, sixes:0 });
     const p = byPlayer.get(it.player);
     p.games += 1;
     // Total guesses counts fails as 7
     p.totalGuesses = (p.totalGuesses || 0) + (it.fail ? 7 : it.guesses);
+    // Count results by guess number
+    if (it.fail) {
+      // fail count already tracked in p.fails
+    } else {
+      if (it.guesses === 1) p.ones += 1;
+      else if (it.guesses === 2) p.twos += 1;
+      else if (it.guesses === 3) p.threes += 1;
+      else if (it.guesses === 4) p.fours += 1;
+      else if (it.guesses === 5) p.fives += 1;
+      else if (it.guesses === 6) p.sixes += 1;
+    }
     if (it.fail) p.fails += 1; else p.wins += 1;
     if (!it.fail) {
       p.sum += it.guesses;
@@ -98,7 +109,7 @@ function computeLeaderboard(items) {
     avgWithFails: s.games ? ((s.sum + (s.fails * 7)) / s.games) : 0,
     best: Number.isFinite(s.best) ? s.best : "-",
     worst: (s.fails > 0 ? "X" : (s.worst || "-")),
-    twos: s.twos, threes: s.threes
+    ones: s.ones, twos: s.twos, threes: s.threes, fours: s.fours, fives: s.fives, sixes: s.sixes
   }));
   rows.sort((a,b) => {
     // Overall ranking uses fail-inclusive avg (fail counts as 7)
@@ -207,7 +218,7 @@ function renderMiniSummary(leaderboard, streaks) {
 function renderLeaderboardTable(leaderboard, streaks) {
   const el = document.getElementById("leaderboard");
   let html = "<table><thead><tr>" +
-    "<th class='rank'>#</th><th>Player</th><th>Avg</th><th>Total</th><th>W</th><th>F</th><th>Best</th><th>Worst</th><th>🔥</th>" +
+    "<th class='rank'>#</th><th>Player</th><th>Avg</th><th>Total</th><th>6</th><th>5</th><th>4</th><th>3</th><th>2</th><th>1</th><th>Fail</th><th>W</th><th>Best</th><th>Worst</th><th>🔥</th>" +
     "</tr></thead><tbody>";
 
   leaderboard.forEach((r, idx) => {
@@ -216,9 +227,16 @@ function renderLeaderboardTable(leaderboard, streaks) {
     html += "<tr>" +
       `<td class='rank'>${medal}</td>` +
       `<td>${escapeHtml(r.player)}</td>` +
-      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td><td>${r.totalGuesses}</td>` +
+      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td>` +
+      `<td>${r.totalGuesses}</td>` +
+      `<td>${r.sixes||0}</td>` +
+      `<td>${r.fives||0}</td>` +
+      `<td>${r.fours||0}</td>` +
+      `<td>${r.threes||0}</td>` +
+      `<td>${r.twos||0}</td>` +
+      `<td>${r.ones||0}</td>` +
+      `<td>${r.fails||0}</td>` +
       `<td>${r.wins}</td>` +
-      `<td>${r.fails}</td>` +
       `<td>${r.best}</td>` +
       `<td>${r.worst}</td>` +
       `<td title="Current / Longest">${st.current}/${st.longest}</td>` +
@@ -469,7 +487,7 @@ function renderPeriodView(periodKey, periodItems, outTrophiesEl, outTableEl) {
 
   // Table
   let html = "<table><thead><tr>" +
-    "<th class='rank'>#</th><th>Player</th><th>Avg</th><th>Total</th><th>W</th><th>F</th><th>Best</th><th>Worst</th><th>🔥</th>" +
+    "<th class='rank'>#</th><th>Player</th><th>Avg</th><th>Total</th><th>6</th><th>5</th><th>4</th><th>3</th><th>2</th><th>1</th><th>Fail</th><th>W</th><th>Best</th><th>Worst</th><th>🔥</th>" +
     "</tr></thead><tbody>";
   lb.forEach((r, idx) => {
     const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : String(idx + 1);
@@ -477,9 +495,16 @@ function renderPeriodView(periodKey, periodItems, outTrophiesEl, outTableEl) {
     html += "<tr>" +
       `<td class='rank'>${medal}</td>` +
       `<td>${escapeHtml(r.player)}</td>` +
-      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td><td>${r.totalGuesses}</td>` +
+      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td>` +
+      `<td>${r.totalGuesses}</td>` +
+      `<td>${r.sixes||0}</td>` +
+      `<td>${r.fives||0}</td>` +
+      `<td>${r.fours||0}</td>` +
+      `<td>${r.threes||0}</td>` +
+      `<td>${r.twos||0}</td>` +
+      `<td>${r.ones||0}</td>` +
+      `<td>${r.fails||0}</td>` +
       `<td>${r.wins}</td>` +
-      `<td>${r.fails}</td>` +
       `<td>${r.best}</td>` +
       `<td>${r.worst}</td>` +
       `<td title="Current / Longest">${st.current}/${st.longest}</td>` +
