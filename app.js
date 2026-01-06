@@ -79,8 +79,9 @@ function computeLeaderboard(items) {
   const rows = Array.from(byPlayer.entries()).map(([player,s]) => ({
     player, games:s.games, wins:s.wins, fails:s.fails,
     avg: s.wins ? (s.sum / s.wins) : 0,
+    avgWithFails: s.games ? ((s.sum + (s.fails * 7)) / s.games) : 0,
     best: Number.isFinite(s.best) ? s.best : "-",
-    worst: s.worst || "-",
+    worst: (s.fails > 0 ? "X" : (s.worst || "-")),
     twos: s.twos, threes: s.threes
   }));
   rows.sort((a,b) => {
@@ -188,7 +189,7 @@ function renderLeaderboardTable(leaderboard, streaks) {
     html += "<tr>" +
       `<td class='rank'>${medal}</td>` +
       `<td>${escapeHtml(r.player)}</td>` +
-      `<td><span class='badge'>${r.avg ? r.avg.toFixed(2) : "-"}</span></td>` +
+      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td>` +
       `<td>${r.wins}</td>` +
       `<td>${r.fails}</td>` +
       `<td>${r.best}</td>` +
@@ -276,12 +277,143 @@ function trophyCards(trophies) {
   `).join("");
 }
 
+
+function computeHallOfFame(items) {
+  const lb = computeLeaderboard(items);
+  const streaks = computeStreaks(items);
+
+  // Best overall avg (wins only)
+  // King uses fail-inclusive average (fail counts as 7)
+  const king = lb.slice().sort((a,b)=> (a.avgWithFails||0) - (b.avgWithFails||0))[0] || null;
+
+  // Most wins
+  const mostWins = lb.slice().sort((a,b) => b.wins - a.wins)[0] || null;
+
+  // Best single solve (min guesses) and who did it most
+  let bestSolve = { guesses: 99, players: new Map() };
+  for (const it of items) {
+    if (it.fail) continue;
+    if (it.guesses < bestSolve.guesses) {
+      bestSolve.guesses = it.guesses;
+      bestSolve.players = new Map([[it.player, 1]]);
+    } else if (it.guesses === bestSolve.guesses) {
+      bestSolve.players.set(it.player, (bestSolve.players.get(it.player) || 0) + 1);
+    }
+  }
+  let bestSolveWinner = null, bestSolveCount = 0;
+  for (const [p,c] of bestSolve.players.entries()) {
+    if (c > bestSolveCount) { bestSolveWinner = p; bestSolveCount = c; }
+  }
+
+  // Most 2s and most 3s
+  const most2s = lb.slice().sort((a,b)=> b.twos - a.twos)[0] || null;
+  const most3s = lb.slice().sort((a,b)=> b.threes - a.threes)[0] || null;
+
+  // Longest streak overall
+  let streakLord = { player: null, longest: 0, current: 0 };
+  for (const r of lb) {
+    const st = streaks.get(r.player);
+    if (!st) continue;
+    if (st.longest > streakLord.longest) streakLord = { player: r.player, longest: st.longest, current: st.current };
+  }
+
+  // Consistency: lowest standard deviation (wins only) minimum N wins
+  const winsByPlayer = new Map();
+  for (const it of items) {
+    if (it.fail) continue;
+    if (!winsByPlayer.has(it.player)) winsByPlayer.set(it.player, []);
+    winsByPlayer.get(it.player).push(it.guesses);
+  }
+  let mostConsistent = { player: null, sd: Infinity, n: 0 };
+  for (const [p, arr] of winsByPlayer.entries()) {
+    if (arr.length < 5) continue; // avoid silly sample sizes
+    const mean = arr.reduce((s,x)=>s+x,0)/arr.length;
+    const varr = arr.reduce((s,x)=>s + Math.pow(x-mean,2),0)/arr.length;
+    const sd = Math.sqrt(varr);
+    if (sd < mostConsistent.sd) mostConsistent = { player: p, sd, n: arr.length };
+  }
+
+  // Hardest puzzle (highest group avg, wins only)
+  const byPuzzle = new Map();
+  for (const it of items) {
+    if (it.fail) continue;
+    if (!byPuzzle.has(it.puzzle)) byPuzzle.set(it.puzzle, []);
+    byPuzzle.get(it.puzzle).push(it.guesses);
+  }
+  let hardest = { puzzle: null, avg: 0 };
+  for (const [pz, arr] of byPuzzle.entries()) {
+    const avg = arr.reduce((s,x)=>s+x,0)/arr.length;
+    if (avg > hardest.avg) hardest = { puzzle: pz, avg };
+  }
+
+  // Worst luck: most fails
+  const brick = lb.slice().sort((a,b)=> b.fails - a.fails)[0] || null;
+
+  return {
+    king,
+    mostWins,
+    bestSolve: { guesses: bestSolve.guesses === 99 ? null : bestSolve.guesses, winner: bestSolveWinner, count: bestSolveCount },
+    most2s,
+    most3s,
+    streakLord,
+    mostConsistent: mostConsistent.player ? mostConsistent : null,
+    hardest,
+    brick
+  };
+}
+
+function renderHallOfFame(hof) {
+  const cardsEl = document.getElementById("hofCards");
+  const tableEl = document.getElementById("hofTable");
+  if (!cardsEl || !tableEl) return;
+
+  const cards = [
+    { icon:"👑", title:"All‑time King", winner: hof.king ? hof.king.player : "", desc: hof.king ? `Best avg: ${hof.king.avg.toFixed(2)} (wins only)` : "—" },
+    { icon:"🏅", title:"Most Wins", winner: hof.mostWins ? hof.mostWins.player : "", desc: hof.mostWins ? `Wins: ${hof.mostWins.wins}` : "—" },
+    { icon:"✨", title:"Best Single Solve", winner: hof.bestSolve.winner || "", desc: hof.bestSolve.guesses ? `${hof.bestSolve.guesses}‑guess solves: ${hof.bestSolve.count}` : "—" },
+    { icon:"2️⃣", title:"Most 2s", winner: hof.most2s ? hof.most2s.player : "", desc: hof.most2s ? `2s: ${hof.most2s.twos}` : "—" },
+    { icon:"3️⃣", title:"Most 3s", winner: hof.most3s ? hof.most3s.player : "", desc: hof.most3s ? `3s: ${hof.most3s.threes}` : "—" },
+    { icon:"🔥", title:"Streak Lord", winner: hof.streakLord.player || "", desc: hof.streakLord.player ? `Longest streak: ${hof.streakLord.longest}` : "—" },
+    { icon:"🎯", title:"Most Consistent", winner: hof.mostConsistent ? hof.mostConsistent.player : "", desc: hof.mostConsistent ? `SD: ${hof.mostConsistent.sd.toFixed(2)} over ${hof.mostConsistent.n} wins` : "Need 5+ wins" },
+    { icon:"😈", title:"Hardest Puzzle", winner: hof.hardest.puzzle ? `#${hof.hardest.puzzle}` : "", desc: hof.hardest.puzzle ? `Group avg: ${hof.hardest.avg.toFixed(2)}` : "—" },
+    { icon:"🧱", title:"Brick Wall", winner: hof.brick ? hof.brick.player : "", desc: hof.brick ? `Fails: ${hof.brick.fails}` : "—" },
+  ];
+
+  cardsEl.innerHTML = cards.map(t => `
+    <div class="trophy">
+      <div class="name">${t.icon} ${escapeHtml(t.title)} — ${escapeHtml(t.winner || "—")}</div>
+      <div class="desc">${escapeHtml(t.desc)}</div>
+    </div>
+  `).join("");
+
+  // Records table
+  const rows = [
+    ["All‑time King (avg)", hof.king ? hof.king.player : "—", hof.king ? hof.king.avg.toFixed(2) : "—"],
+    ["Most wins", hof.mostWins ? hof.mostWins.player : "—", hof.mostWins ? String(hof.mostWins.wins) : "—"],
+    ["Best single solve (min)", hof.bestSolve.winner || "—", hof.bestSolve.guesses ? `${hof.bestSolve.guesses} (count ${hof.bestSolve.count})` : "—"],
+    ["Longest streak", hof.streakLord.player || "—", hof.streakLord.player ? String(hof.streakLord.longest) : "—"],
+    ["Most 2s", hof.most2s ? hof.most2s.player : "—", hof.most2s ? String(hof.most2s.twos) : "—"],
+    ["Most 3s", hof.most3s ? hof.most3s.player : "—", hof.most3s ? String(hof.most3s.threes) : "—"],
+    ["Most fails", hof.brick ? hof.brick.player : "—", hof.brick ? String(hof.brick.fails) : "—"],
+    ["Hardest puzzle", hof.hardest.puzzle ? `#${hof.hardest.puzzle}` : "—", hof.hardest.puzzle ? hof.hardest.avg.toFixed(2) : "—"],
+    ["Most consistent (SD)", hof.mostConsistent ? hof.mostConsistent.player : "—", hof.mostConsistent ? hof.mostConsistent.sd.toFixed(2) : "Need 5+ wins"],
+  ];
+
+  let html = "<table><thead><tr><th>Record</th><th>Holder</th><th>Value</th></tr></thead><tbody>";
+  for (const r of rows) {
+    html += `<tr><td>${escapeHtml(r[0])}</td><td>${escapeHtml(r[1])}</td><td>${escapeHtml(r[2])}</td></tr>`;
+  }
+  html += "</tbody></table>";
+  tableEl.innerHTML = html;
+}
+
 function renderPeriodView(periodKey, periodItems, outTrophiesEl, outTableEl) {
   const lb = computeLeaderboard(periodItems);
   const streaks = computeStreaks(periodItems);
 
   // Trophies:
-  const king = lb.find(r => r.wins > 0) || null;
+  // King uses fail-inclusive average (fail counts as 7)
+  const king = lb.slice().sort((a,b)=> (a.avgWithFails||0) - (b.avgWithFails||0))[0] || null;
   const sniper = lb.slice().sort((a,b)=> (b.twos+b.threes) - (a.twos+a.threes))[0] || null;
   const brick = lb.slice().sort((a,b)=> b.fails - a.fails)[0] || null;
 
@@ -292,7 +424,7 @@ function renderPeriodView(periodKey, periodItems, outTrophiesEl, outTableEl) {
   }
 
   const trophies = [
-    { icon:"👑", title:"Wordle King", winner: king ? king.player : "", desc: king ? `Lowest avg: ${king.avg.toFixed(2)} (wins only)` : "—" },
+    { icon:"👑", title:"Wordle King", winner: king ? king.player : "", desc: king ? `Lowest avg (fails count as 7): ${king.avgWithFails.toFixed(2)}` : "—" },
     { icon:"🎯", title:"Sniper", winner: sniper ? sniper.player : "", desc: sniper ? `Most 2s+3s: ${(sniper.twos+sniper.threes)}` : "—" },
     { icon:"🧱", title:"Brick Wall", winner: brick ? brick.player : "", desc: brick ? `Most fails: ${brick.fails}` : "—" },
     { icon:"🔥", title:"Streak Lord", winner: streakLord.player || "", desc: streakLord.player ? `Longest streak: ${streakLord.longest}` : "—" },
@@ -310,7 +442,7 @@ function renderPeriodView(periodKey, periodItems, outTrophiesEl, outTableEl) {
     html += "<tr>" +
       `<td class='rank'>${medal}</td>` +
       `<td>${escapeHtml(r.player)}</td>` +
-      `<td><span class='badge'>${r.avg ? r.avg.toFixed(2) : "-"}</span></td>` +
+      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td>` +
       `<td>${r.wins}</td>` +
       `<td>${r.fails}</td>` +
       `<td>${r.best}</td>` +
@@ -408,6 +540,10 @@ async function main() {
   };
   monthSelect.addEventListener("change", updateMonthly);
   updateMonthly();
+
+  // Hall of Fame
+  const hof = computeHallOfFame(items);
+  renderHallOfFame(hof);
 
   setStatus("Updated.");
 }

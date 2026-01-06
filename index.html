@@ -18,6 +18,7 @@
     <button class="tab" data-tab="form" role="tab" aria-selected="false">Form</button>
     <button class="tab" data-tab="weekly" role="tab" aria-selected="false">Weekly</button>
     <button class="tab" data-tab="monthly" role="tab" aria-selected="false">Monthly</button>
+    <button class="tab" data-tab="hof" role="tab" aria-selected="false">Hall of Fame</button>
   </nav>
 
   <main class="container">
@@ -55,6 +56,7 @@
         <select id="weekSelect"></select>
       </div>
       <div id="weeklyTrophies" class="trophies"></div>
+      <div class="note">Note: weekly/monthly averages count a fail as 7 (worse than a 6).</div>
       <h3 class="h3">Weekly table</h3>
       <div id="weeklyTable"></div>
     </section>
@@ -66,9 +68,19 @@
         <select id="monthSelect"></select>
       </div>
       <div id="monthlyTrophies" class="trophies"></div>
+      <div class="note">Note: weekly/monthly averages count a fail as 7 (worse than a 6).</div>
       <h3 class="h3">Monthly table</h3>
       <div id="monthlyTable"></div>
     </section>
+  
+    <section class="card tabpane hidden" id="tab-hof">
+      <h2>Hall of Fame</h2>
+      <div id="hofCards" class="trophies"></div>
+      <h3 class="h3">Records table</h3>
+      <div id="hofTable"></div>
+      <div class="note">Records are calculated from all data in your sheet. Add more results and these update automatically.</div>
+    </section>
+
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
