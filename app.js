@@ -67,6 +67,7 @@ function computeLeaderboard(items) {
     if (!byPlayer.has(it.player)) byPlayer.set(it.player, { games:0, wins:0, fails:0, sum:0, best:Infinity, worst:0, twos:0, threes:0 });
     const p = byPlayer.get(it.player);
     p.games += 1;
+    if (!it.fail) p.totalGuesses = (p.totalGuesses || 0) + it.guesses;
     if (it.fail) p.fails += 1; else p.wins += 1;
     if (!it.fail) {
       p.sum += it.guesses;
@@ -77,6 +78,7 @@ function computeLeaderboard(items) {
     }
   }
   const rows = Array.from(byPlayer.entries()).map(([player,s]) => ({
+    totalGuesses: s.totalGuesses || 0,
     player, games:s.games, wins:s.wins, fails:s.fails,
     avg: s.wins ? (s.sum / s.wins) : 0,
     avgWithFails: s.games ? ((s.sum + (s.fails * 7)) / s.games) : 0,
@@ -180,7 +182,7 @@ function renderMiniSummary(leaderboard, streaks) {
 function renderLeaderboardTable(leaderboard, streaks) {
   const el = document.getElementById("leaderboard");
   let html = "<table><thead><tr>" +
-    "<th class='rank'>#</th><th>Player</th><th>Avg</th><th>W</th><th>F</th><th>Best</th><th>Worst</th><th>🔥</th>" +
+    "<th class='rank'>#</th><th>Player</th><th>Avg</th><th>Total</th><th>W</th><th>F</th><th>Best</th><th>Worst</th><th>🔥</th>" +
     "</tr></thead><tbody>";
 
   leaderboard.forEach((r, idx) => {
@@ -189,7 +191,7 @@ function renderLeaderboardTable(leaderboard, streaks) {
     html += "<tr>" +
       `<td class='rank'>${medal}</td>` +
       `<td>${escapeHtml(r.player)}</td>` +
-      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td>` +
+      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td><td>${r.totalGuesses}</td>` +
       `<td>${r.wins}</td>` +
       `<td>${r.fails}</td>` +
       `<td>${r.best}</td>` +
@@ -409,6 +411,14 @@ function renderHallOfFame(hof) {
 
 function renderPeriodView(periodKey, periodItems, outTrophiesEl, outTableEl) {
   const lb = computeLeaderboard(periodItems);
+  // Re-sort for weekly/monthly: fail-inclusive average (fail counts as 7)
+  lb.sort((a,b)=>{
+    const av = (a.avgWithFails ?? a.avg ?? 0);
+    const bv = (b.avgWithFails ?? b.avg ?? 0);
+    if (av !== bv) return av - bv;
+    if ((a.fails||0) !== (b.fails||0)) return (a.fails||0) - (b.fails||0);
+    return ((a.best==="-"?999:a.best) - (b.best==="-"?999:b.best));
+  });
   const streaks = computeStreaks(periodItems);
 
   // Trophies:
@@ -434,7 +444,7 @@ function renderPeriodView(periodKey, periodItems, outTrophiesEl, outTableEl) {
 
   // Table
   let html = "<table><thead><tr>" +
-    "<th class='rank'>#</th><th>Player</th><th>Avg</th><th>W</th><th>F</th><th>Best</th><th>Worst</th><th>🔥</th>" +
+    "<th class='rank'>#</th><th>Player</th><th>Avg</th><th>Total</th><th>W</th><th>F</th><th>Best</th><th>Worst</th><th>🔥</th>" +
     "</tr></thead><tbody>";
   lb.forEach((r, idx) => {
     const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : String(idx + 1);
@@ -442,7 +452,7 @@ function renderPeriodView(periodKey, periodItems, outTrophiesEl, outTableEl) {
     html += "<tr>" +
       `<td class='rank'>${medal}</td>` +
       `<td>${escapeHtml(r.player)}</td>` +
-      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td>` +
+      `<td><span class='badge'>${(r.avgWithFails || r.avg) ? (r.avgWithFails || r.avg).toFixed(2) : "-"}</span></td><td>${r.totalGuesses}</td>` +
       `<td>${r.wins}</td>` +
       `<td>${r.fails}</td>` +
       `<td>${r.best}</td>` +
@@ -495,6 +505,25 @@ async function main() {
   }).filter(it => it.dt && it.player);
 
   items.sort((a,b) => a.dt - b.dt || a.puzzle - b.puzzle || a.player.localeCompare(b.player));
+  // Treat blank day as fail: if a player has no entry for a date, count as fail (synthetic X)
+  const allPlayers = Array.from(new Set(items.map(i => i.player)));
+  const byDate = new Map();
+  items.forEach(i => {
+    if (!byDate.has(i.dateKey)) byDate.set(i.dateKey, new Set());
+    byDate.get(i.dateKey).add(i.player);
+  });
+
+  const synthetic = [];
+  for (const [dateKey, players] of byDate.entries()) {
+    const dt = parseDateDMY(dateKey);
+    for (const p of allPlayers) {
+      if (!players.has(p)) {
+        synthetic.push({ dateKey, dt, puzzle: 0, player: p, guesses: 0, fail: true });
+      }
+    }
+  }
+  items.push(...synthetic);
+
 
   if (!items.length) { setStatus("No data found yet."); return; }
 
